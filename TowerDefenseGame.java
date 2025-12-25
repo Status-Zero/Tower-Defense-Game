@@ -1,502 +1,507 @@
-import javafx.animation.AnimationTimer;
-import javafx.application.Application;
-import javafx.geometry.Bounds;
-import javafx.geometry.Point2D;
-import javafx.scene.Scene;
-import javafx.scene.canvas.Canvas;
-import javafx.scene.canvas.GraphicsContext;
-import javafx.scene.input.MouseEvent;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
-import javafx.scene.paint.Color;
-import javafx.scene.text.Font;
-import javafx.scene.text.Text;
-import javafx.stage.Stage;
-
+import java.awt.*;
+import java.awt.event.*;
 import java.util.*;
+import javax.swing.*;
 
-/**
- * Complete JavaFX Tower Defense Game Implementation
- * Features: Towers, Enemies, Waves, Economy System, UI
- */
-public class TowerDefenseGame extends Application {
-    private static final int WIDTH = 1200;
-    private static final int HEIGHT = 800;
-    private static final int TILE_SIZE = 40;
-
-    private GameState gameState;
-    private Canvas gameCanvas;
-    private AnimationTimer gameLoop;
-    private Text statusText;
-
+public class TowerDefenseGame extends JPanel implements ActionListener, MouseListener {
+    
+    // Game components
+    private ArrayList<Enemy> enemies;
+    private ArrayList<Tower> towers;
+    private ArrayList<Projectile> projectiles;
+    private int money = 500;
+    private int lives = 20;
+    private int wave = 1;
+    private boolean gameOver = false;
+    
+    // Game state
+    private Timer gameTimer;
+    private int selectedTower = -1;
+    private Point mousePos;
+    
+    // Tower costs
+    private static final int BASIC_TOWER_COST = 100;
+    private static final int RAPID_TOWER_COST = 150;
+    private static final int SNIPER_TOWER_COST = 200;
+    
+    // Extended enemy path with more turns and waypoints
+    private static final Point[] PATH = {
+        new Point(50, 300),
+        new Point(150, 300),
+        new Point(150, 100),
+        new Point(300, 100),
+        new Point(300, 400),
+        new Point(450, 400),
+        new Point(450, 150),
+        new Point(600, 150),
+        new Point(600, 500),
+        new Point(750, 500),
+        new Point(750, 200),
+        new Point(900, 200),
+        new Point(900, 450),
+        new Point(1000, 450),
+        new Point(1000, 50)
+    };
+    
+    public TowerDefenseGame() {
+        enemies = new ArrayList<>();
+        towers = new ArrayList<>();
+        projectiles = new ArrayList<>();
+        
+        addMouseListener(this);
+        
+        gameTimer = new Timer(16, this); // ~60 FPS
+        gameTimer.start();
+    }
+    
     @Override
-    public void start(Stage primaryStage) {
-        gameState = new GameState();
-        
-        BorderPane root = new BorderPane();
-        root.setStyle("-fx-background-color: #2a2a2a;");
-
-        // Game Canvas
-        gameCanvas = new Canvas(WIDTH - 250, HEIGHT);
-        gameCanvas.setOnMouseClicked(this::handleCanvasClick);
-        root.setCenter(gameCanvas);
-
-        // Right Panel - UI
-        VBox rightPanel = createRightPanel();
-        root.setRight(rightPanel);
-
-        Scene scene = new Scene(root, WIDTH, HEIGHT);
-        primaryStage.setTitle("Tower Defense Game");
-        primaryStage.setScene(scene);
-        primaryStage.show();
-
-        startGameLoop();
-    }
-
-    private VBox createRightPanel() {
-        VBox panel = new VBox(10);
-        panel.setPrefWidth(250);
-        panel.setStyle("-fx-background-color: #1a1a1a; -fx-padding: 10;");
-
-        // Status Display
-        statusText = new Text();
-        statusText.setFont(Font.font(14));
-        statusText.setFill(Color.WHITE);
-
-        // Towers Section
-        VBox towersBox = new VBox(5);
-        towersBox.setStyle("-fx-border-color: #444; -fx-border-width: 1; -fx-padding: 10;");
-        Text towersTitle = new Text("Towers (Click to Select)");
-        towersTitle.setFont(Font.font(14));
-        towersTitle.setFill(Color.LIGHTBLUE);
-
-        // Tower buttons
-        Text basicTower = new Text("Basic: 100G");
-        basicTower.setFont(Font.font(12));
-        basicTower.setFill(Color.WHITE);
-        basicTower.setOnMouseClicked(e -> gameState.setSelectedTower(TowerType.BASIC));
-
-        Text rapidTower = new Text("Rapid: 150G");
-        rapidTower.setFont(Font.font(12));
-        rapidTower.setFill(Color.WHITE);
-        rapidTower.setOnMouseClicked(e -> gameState.setSelectedTower(TowerType.RAPID));
-
-        Text sniperTower = new Text("Sniper: 200G");
-        sniperTower.setFont(Font.font(12));
-        sniperTower.setFill(Color.WHITE);
-        sniperTower.setOnMouseClicked(e -> gameState.setSelectedTower(TowerType.SNIPER));
-
-        towersBox.getChildren().addAll(towersTitle, basicTower, rapidTower, sniperTower);
-
-        panel.getChildren().addAll(statusText, towersBox);
-        return panel;
-    }
-
-    private void handleCanvasClick(MouseEvent event) {
-        int gridX = (int) (event.getX() / TILE_SIZE);
-        int gridY = (int) (event.getY() / TILE_SIZE);
-
-        gameState.placeTower(gridX, gridY);
-    }
-
-    private void startGameLoop() {
-        gameLoop = new AnimationTimer() {
-            @Override
-            public void handle(long now) {
-                update();
-                render();
+    public void actionPerformed(ActionEvent e) {
+        if (!gameOver) {
+            // Update enemies
+            for (Enemy enemy : enemies) {
+                enemy.update();
             }
-        };
-        gameLoop.start();
-    }
-
-    private void update() {
-        gameState.update();
-    }
-
-    private void render() {
-        GraphicsContext gc = gameCanvas.getGraphicsContext2D();
-        gc.setFill(Color.web("#1a3a1a"));
-        gc.fillRect(0, 0, gameCanvas.getWidth(), gameCanvas.getHeight());
-
-        // Draw grid
-        drawGrid(gc);
-
-        // Draw path
-        drawPath(gc);
-
-        // Draw towers
-        for (Tower tower : gameState.getTowers()) {
-            tower.render(gc, TILE_SIZE);
-        }
-
-        // Draw enemies
-        for (Enemy enemy : gameState.getEnemies()) {
-            enemy.render(gc);
-        }
-
-        // Draw projectiles
-        for (Projectile projectile : gameState.getProjectiles()) {
-            projectile.render(gc);
-        }
-
-        // Update status text
-        updateStatusUI();
-    }
-
-    private void drawGrid(GraphicsContext gc) {
-        gc.setStroke(Color.web("#333333"));
-        gc.setLineWidth(0.5);
-
-        int cols = (int) (gameCanvas.getWidth() / TILE_SIZE);
-        int rows = (int) (gameCanvas.getHeight() / TILE_SIZE);
-
-        for (int i = 0; i <= cols; i++) {
-            gc.strokeLine(i * TILE_SIZE, 0, i * TILE_SIZE, gameCanvas.getHeight());
-        }
-
-        for (int i = 0; i <= rows; i++) {
-            gc.strokeLine(0, i * TILE_SIZE, gameCanvas.getWidth(), i * TILE_SIZE);
-        }
-    }
-
-    private void drawPath(GraphicsContext gc) {
-        Point2D[] path = Enemy.getPath();
-        
-        // Draw path with enhanced visibility
-        gc.setStroke(Color.web("#FFD700"));
-        gc.setLineWidth(8);
-        
-        for (int i = 0; i < path.length - 1; i++) {
-            gc.strokeLine(path[i].getX(), path[i].getY(), path[i + 1].getX(), path[i + 1].getY());
+            
+            // Check if enemies reached end
+            for (int i = enemies.size() - 1; i >= 0; i--) {
+                if (enemies.get(i).hasReachedEnd()) {
+                    lives--;
+                    enemies.remove(i);
+                    if (lives <= 0) {
+                        gameOver = true;
+                    }
+                }
+            }
+            
+            // Update towers and handle targeting
+            for (Tower tower : towers) {
+                Enemy target = findClosestEnemy(tower);
+                if (target != null) {
+                    tower.setTarget(target);
+                    if (tower.canFire()) {
+                        // Calculate predicted position of enemy
+                        Point predictedPos = calculatePredictedPosition(target, tower);
+                        Projectile projectile = new Projectile(
+                            tower.getX(), tower.getY(),
+                            predictedPos.x, predictedPos.y,
+                            target, tower.getDamage()
+                        );
+                        projectiles.add(projectile);
+                        tower.resetFireTimer();
+                    }
+                } else {
+                    tower.setTarget(null);
+                }
+            }
+            
+            // Update projectiles
+            for (int i = projectiles.size() - 1; i >= 0; i--) {
+                Projectile proj = projectiles.get(i);
+                proj.update();
+                
+                if (proj.hasHitTarget()) {
+                    projectiles.remove(i);
+                } else if (proj.isOffScreen()) {
+                    projectiles.remove(i);
+                }
+            }
         }
         
-        // Draw waypoint markers
-        gc.setFill(Color.web("#FFA500"));
-        for (Point2D waypoint : path) {
-            gc.fillOval(waypoint.getX() - 5, waypoint.getY() - 5, 10, 10);
-        }
+        repaint();
     }
-
-    private void updateStatusUI() {
-        statusText.setText(
-            "Gold: " + gameState.getGold() + "\n" +
-            "Health: " + gameState.getHealth() + "\n" +
-            "Wave: " + gameState.getCurrentWave() + "\n" +
-            "Enemies: " + gameState.getEnemies().size() + "\n" +
-            "Towers: " + gameState.getTowers().size() + "\n" +
-            "Selected: " + (gameState.getSelectedTower() != null ? gameState.getSelectedTower() : "None")
-        );
-    }
-
-    public static void main(String[] args) {
-        launch(args);
-    }
-}
-
-// Game State Manager
-class GameState {
-    private int gold = 500;
-    private int health = 100;
-    private int currentWave = 1;
-    private int enemiesSpawned = 0;
-    private int maxEnemiesPerWave = 10;
-    private long waveStartTime = 0;
-    private long waveDelay = 3000; // 3 seconds between enemies
-
-    private List<Tower> towers = new ArrayList<>();
-    private List<Enemy> enemies = new ArrayList<>();
-    private List<Projectile> projectiles = new ArrayList<>();
-    private Set<String> occupiedTiles = new HashSet<>();
-
-    private TowerType selectedTower = null;
-    private Random random = new Random();
-
-    public GameState() {
-        waveStartTime = System.currentTimeMillis();
-    }
-
-    public void update() {
-        // Spawn enemies
-        if (enemies.size() < maxEnemiesPerWave && System.currentTimeMillis() - waveStartTime > waveDelay * enemiesSpawned) {
-            if (enemiesSpawned < maxEnemiesPerWave) {
-                spawnEnemy();
-                enemiesSpawned++;
-            }
-        }
-
-        // Update towers
-        for (Tower tower : towers) {
-            tower.update(enemies, projectiles);
-        }
-
-        // Update enemies
-        List<Enemy> deadEnemies = new ArrayList<>();
-        for (Enemy enemy : enemies) {
-            enemy.update();
-            if (enemy.isDead()) {
-                deadEnemies.add(enemy);
-                gold += enemy.getReward();
-            }
-            if (enemy.getProgress() >= 1.0) {
-                deadEnemies.add(enemy);
-                health -= enemy.getDamage();
-            }
-        }
-        enemies.removeAll(deadEnemies);
-
-        // Update projectiles
-        List<Projectile> deadProjectiles = new ArrayList<>();
-        for (Projectile projectile : projectiles) {
-            projectile.update(enemies);
-            if (projectile.isDead()) {
-                deadProjectiles.add(projectile);
-            }
-        }
-        projectiles.removeAll(deadProjectiles);
-
-        // Wave management
-        if (enemies.isEmpty() && enemiesSpawned >= maxEnemiesPerWave) {
-            startNewWave();
-        }
-
-        // Game over check
-        if (health <= 0) {
-            health = 0;
-        }
-    }
-
-    private void spawnEnemy() {
-        enemies.add(new Enemy(0, 0, currentWave));
-    }
-
-    private void startNewWave() {
-        currentWave++;
-        enemiesSpawned = 0;
-        maxEnemiesPerWave = Math.min(15, 10 + currentWave * 2);
-        waveStartTime = System.currentTimeMillis();
-    }
-
-    public void placeTower(int gridX, int gridY) {
-        if (selectedTower == null) return;
-
-        String tileKey = gridX + "," + gridY;
-        if (occupiedTiles.contains(tileKey)) return;
-
-        int cost = selectedTower.getCost();
-        if (gold >= cost) {
-            gold -= cost;
-            towers.add(new Tower(gridX * 40, gridY * 40, selectedTower));
-            occupiedTiles.add(tileKey);
-        }
-    }
-
-    public void setSelectedTower(TowerType type) {
-        selectedTower = type;
-    }
-
-    // Getters
-    public int getGold() { return gold; }
-    public int getHealth() { return health; }
-    public int getCurrentWave() { return currentWave; }
-    public List<Tower> getTowers() { return towers; }
-    public List<Enemy> getEnemies() { return enemies; }
-    public List<Projectile> getProjectiles() { return projectiles; }
-    public TowerType getSelectedTower() { return selectedTower; }
-}
-
-// Tower Type Enum
-enum TowerType {
-    BASIC(100, 100, 1.0, 5),
-    RAPID(150, 120, 1.5, 3),
-    SNIPER(200, 200, 0.5, 8);
-
-    private final int cost;
-    private final int range;
-    private final double fireRate;
-    private final int damage;
-
-    TowerType(int cost, int range, double fireRate, int damage) {
-        this.cost = cost;
-        this.range = range;
-        this.fireRate = fireRate;
-        this.damage = damage;
-    }
-
-    public int getCost() { return cost; }
-    public int getRange() { return range; }
-    public double getFireRate() { return fireRate; }
-    public int getDamage() { return damage; }
-}
-
-// Tower Class
-class Tower {
-    private double x, y;
-    private TowerType type;
-    private long lastShotTime = 0;
-    private static final Color[] TOWER_COLORS = {Color.DARKBLUE, Color.DARKRED, Color.DARKGREEN};
-
-    public Tower(double x, double y, TowerType type) {
-        this.x = x + 20;
-        this.y = y + 20;
-        this.type = type;
-    }
-
-    public void update(List<Enemy> enemies, List<Projectile> projectiles) {
-        long currentTime = System.currentTimeMillis();
-        long fireInterval = (long) (1000 / type.getFireRate());
-
-        if (currentTime - lastShotTime > fireInterval) {
-            Enemy target = findTarget(enemies);
-            if (target != null) {
-                // Fire projectile to the target's current position
-                projectiles.add(new Projectile(x, y, target.getX(), target.getY(), type.getDamage()));
-                lastShotTime = currentTime;
-            }
-        }
-    }
-
-    private Enemy findTarget(List<Enemy> enemies) {
+    
+    private Enemy findClosestEnemy(Tower tower) {
         Enemy closest = null;
-        double closestDistance = type.getRange();
-
+        double minDistance = tower.getRange();
+        
         for (Enemy enemy : enemies) {
-            double distance = distance(x, y, enemy.getX(), enemy.getY());
-            if (distance < closestDistance) {
-                closestDistance = distance;
+            double distance = tower.distanceTo(enemy);
+            if (distance < minDistance) {
+                minDistance = distance;
                 closest = enemy;
             }
         }
-
+        
         return closest;
     }
-
-    private double distance(double x1, double y1, double x2, double y2) {
-        return Math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+    
+    private Point calculatePredictedPosition(Enemy enemy, Tower tower) {
+        // Calculate where the enemy will be when the projectile reaches it
+        double distance = tower.distanceTo(enemy);
+        double projectileSpeed = 300; // pixels per second
+        double timeToHit = distance / projectileSpeed;
+        
+        // Get enemy velocity
+        Vector2D velocity = enemy.getVelocity();
+        
+        // Calculate predicted position
+        Point currentPos = enemy.getPosition();
+        double predictedX = currentPos.x + (velocity.x * timeToHit);
+        double predictedY = currentPos.y + (velocity.y * timeToHit);
+        
+        return new Point((int)predictedX, (int)predictedY);
     }
-
-    public void render(GraphicsContext gc, int tileSize) {
-        gc.setFill(TOWER_COLORS[type.ordinal()]);
-        gc.fillOval(x - 15, y - 15, 30, 30);
-        gc.setStroke(Color.YELLOW);
-        gc.setLineWidth(2);
-        gc.strokeOval(x - type.getRange(), y - type.getRange(), type.getRange() * 2, type.getRange() * 2);
+    
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        Graphics2D g2d = (Graphics2D) g;
+        
+        // Draw path
+        drawPath(g2d);
+        
+        // Draw enemies
+        for (Enemy enemy : enemies) {
+            enemy.draw(g2d);
+        }
+        
+        // Draw towers
+        for (Tower tower : towers) {
+            tower.draw(g2d);
+        }
+        
+        // Draw projectiles
+        for (Projectile projectile : projectiles) {
+            projectile.draw(g2d);
+        }
+        
+        // Draw UI
+        drawUI(g2d);
+    }
+    
+    private void drawPath(Graphics2D g) {
+        g.setColor(new Color(200, 200, 200));
+        g.setStroke(new BasicStroke(20));
+        
+        for (int i = 0; i < PATH.length - 1; i++) {
+            g.drawLine(PATH[i].x, PATH[i].y, PATH[i + 1].x, PATH[i + 1].y);
+        }
+    }
+    
+    private void drawUI(Graphics2D g) {
+        g.setColor(Color.BLACK);
+        g.setFont(new Font("Arial", Font.BOLD, 16));
+        
+        g.drawString("Money: $" + money, 10, 20);
+        g.drawString("Lives: " + lives, 10, 40);
+        g.drawString("Wave: " + wave, 10, 60);
+        
+        g.drawString("1: Basic Tower ($" + BASIC_TOWER_COST + ")", 10, 100);
+        g.drawString("2: Rapid Tower ($" + RAPID_TOWER_COST + ")", 10, 120);
+        g.drawString("3: Sniper Tower ($" + SNIPER_TOWER_COST + ")", 10, 140);
+        
+        if (gameOver) {
+            g.setColor(new Color(255, 0, 0, 128));
+            g.fillRect(0, 0, getWidth(), getHeight());
+            g.setColor(Color.WHITE);
+            g.setFont(new Font("Arial", Font.BOLD, 48));
+            g.drawString("GAME OVER", getWidth() / 2 - 150, getHeight() / 2);
+        }
+    }
+    
+    @Override
+    public void mouseClicked(MouseEvent e) {
+        if (selectedTower != -1 && !gameOver) {
+            int x = e.getX();
+            int y = e.getY();
+            
+            Tower tower = null;
+            switch (selectedTower) {
+                case 1:
+                    if (money >= BASIC_TOWER_COST) {
+                        tower = new BasicTower(x, y);
+                        money -= BASIC_TOWER_COST;
+                    }
+                    break;
+                case 2:
+                    if (money >= RAPID_TOWER_COST) {
+                        tower = new RapidTower(x, y);
+                        money -= RAPID_TOWER_COST;
+                    }
+                    break;
+                case 3:
+                    if (money >= SNIPER_TOWER_COST) {
+                        tower = new SniperTower(x, y);
+                        money -= SNIPER_TOWER_COST;
+                    }
+                    break;
+            }
+            
+            if (tower != null) {
+                towers.add(tower);
+            }
+            
+            selectedTower = -1;
+        }
+    }
+    
+    @Override
+    public void mousePressed(MouseEvent e) {}
+    
+    @Override
+    public void mouseReleased(MouseEvent e) {}
+    
+    @Override
+    public void mouseEntered(MouseEvent e) {}
+    
+    @Override
+    public void mouseExited(MouseEvent e) {}
+    
+    public void startWave() {
+        for (int i = 0; i < 5 + wave * 2; i++) {
+            enemies.add(new Enemy(PATH));
+        }
+        wave++;
+    }
+    
+    public static void main(String[] args) {
+        JFrame frame = new JFrame("Tower Defense Game");
+        TowerDefenseGame game = new TowerDefenseGame();
+        frame.add(game);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setSize(1200, 700);
+        frame.setLocationRelativeTo(null);
+        frame.setVisible(true);
+        
+        // Test: start first wave after 2 seconds
+        Timer startTimer = new Timer(2000, e -> game.startWave());
+        startTimer.setRepeats(false);
+        startTimer.start();
     }
 }
 
-// Enemy Class
+// Enemy class
 class Enemy {
+    private Point[] path;
+    private int pathIndex = 0;
     private double x, y;
-    private double progress = 0;
-    private int health;
-    private int maxHealth;
-    private static final int SPEED = 1;
-    private static final Point2D[] PATH = {
-        new Point2D(0, 100),
-        new Point2D(200, 100),
-        new Point2D(200, 300),
-        new Point2D(500, 300),
-        new Point2D(500, 500),
-        new Point2D(800, 500),
-        new Point2D(800, 100),
-        new Point2D(950, 100)
-    };
-
-    public Enemy(double x, double y, int wave) {
-        this.x = x;
-        this.y = y;
-        this.maxHealth = 20 + wave * 5;
-        this.health = maxHealth;
+    private double speed = 1.0; // pixels per frame
+    private int health = 1;
+    private Vector2D velocity;
+    
+    public Enemy(Point[] path) {
+        this.path = path;
+        this.x = path[0].x;
+        this.y = path[0].y;
+        this.velocity = new Vector2D(0, 0);
     }
-
-    public static Point2D[] getPath() {
-        return PATH;
-    }
-
+    
     public void update() {
-        progress += SPEED / 500.0; // Normalized progress
-        if (progress < 1.0) {
-            updatePosition();
+        if (pathIndex < path.length - 1) {
+            Point current = path[pathIndex];
+            Point next = path[pathIndex + 1];
+            
+            double dx = next.x - x;
+            double dy = next.y - y;
+            double distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < speed) {
+                pathIndex++;
+                if (pathIndex < path.length - 1) {
+                    next = path[pathIndex + 1];
+                    dx = next.x - x;
+                    dy = next.y - y;
+                    distance = Math.sqrt(dx * dx + dy * dy);
+                }
+            }
+            
+            // Update velocity for predictive targeting
+            velocity.x = (dx / distance) * speed;
+            velocity.y = (dy / distance) * speed;
+            
+            x += velocity.x;
+            y += velocity.y;
         }
     }
-
-    private void updatePosition() {
-        int pathIndex = (int) (progress * (PATH.length - 1));
-        Point2D current = PATH[Math.min(pathIndex, PATH.length - 1)];
-        Point2D next = PATH[Math.min(pathIndex + 1, PATH.length - 1)];
-
-        double segmentProgress = (progress * (PATH.length - 1)) - pathIndex;
-        x = current.getX() + (next.getX() - current.getX()) * segmentProgress;
-        y = current.getY() + (next.getY() - current.getY()) * segmentProgress;
-    }
-
+    
     public void takeDamage(int damage) {
         health -= damage;
     }
-
-    public void render(GraphicsContext gc) {
-        gc.setFill(Color.RED);
-        gc.fillOval(x - 10, y - 10, 20, 20);
-
-        // Health bar
-        gc.setFill(Color.GREEN);
-        double healthPercentage = (double) health / maxHealth;
-        gc.fillRect(x - 10, y - 15, 20 * healthPercentage, 3);
-        gc.setStroke(Color.DARKGREEN);
-        gc.strokeRect(x - 10, y - 15, 20, 3);
+    
+    public boolean isDead() {
+        return health <= 0;
     }
-
-    public boolean isDead() { return health <= 0; }
-    public double getProgress() { return progress; }
-    public double getX() { return x; }
-    public double getY() { return y; }
-    public int getDamage() { return 10; }
-    public int getReward() { return 25; }
+    
+    public boolean hasReachedEnd() {
+        return pathIndex >= path.length - 1;
+    }
+    
+    public Point getPosition() {
+        return new Point((int)x, (int)y);
+    }
+    
+    public Vector2D getVelocity() {
+        return velocity;
+    }
+    
+    public void draw(Graphics2D g) {
+        g.setColor(Color.RED);
+        g.fillOval((int)x - 5, (int)y - 5, 10, 10);
+    }
 }
 
-// Projectile Class
+// Tower base class
+abstract class Tower {
+    protected int x, y;
+    protected int range = 100;
+    protected double fireRate;
+    protected int damage;
+    protected long lastFireTime = 0;
+    protected Enemy target;
+    
+    public Tower(int x, int y, double fireRate, int damage) {
+        this.x = x;
+        this.y = y;
+        this.fireRate = fireRate;
+        this.damage = damage;
+    }
+    
+    public boolean canFire() {
+        long currentTime = System.currentTimeMillis();
+        long fireInterval = (long)(1000.0 / fireRate);
+        return (currentTime - lastFireTime) >= fireInterval && target != null && !target.isDead();
+    }
+    
+    public void resetFireTimer() {
+        lastFireTime = System.currentTimeMillis();
+    }
+    
+    public void setTarget(Enemy target) {
+        this.target = target;
+    }
+    
+    public int getX() {
+        return x;
+    }
+    
+    public int getY() {
+        return y;
+    }
+    
+    public int getRange() {
+        return range;
+    }
+    
+    public int getDamage() {
+        return damage;
+    }
+    
+    public double distanceTo(Enemy enemy) {
+        Point enemyPos = enemy.getPosition();
+        double dx = x - enemyPos.x;
+        double dy = y - enemyPos.y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    public abstract void draw(Graphics2D g);
+}
+
+// Tower implementations
+class BasicTower extends Tower {
+    public BasicTower(int x, int y) {
+        super(x, y, 2.0, 3); // fires every 0.5 seconds, deals 3 damage
+    }
+    
+    @Override
+    public void draw(Graphics2D g) {
+        g.setColor(Color.BLUE);
+        g.fillRect(x - 10, y - 10, 20, 20);
+        g.setColor(new Color(0, 0, 150));
+        g.drawOval(x - range, y - range, range * 2, range * 2);
+    }
+}
+
+class RapidTower extends Tower {
+    public RapidTower(int x, int y) {
+        super(x, y, 10.0, 5); // fires every 0.1 seconds, deals 5 damage
+    }
+    
+    @Override
+    public void draw(Graphics2D g) {
+        g.setColor(Color.GREEN);
+        g.fillRect(x - 10, y - 10, 20, 20);
+        g.setColor(new Color(0, 150, 0));
+        g.drawOval(x - range, y - range, range * 2, range * 2);
+    }
+}
+
+class SniperTower extends Tower {
+    public SniperTower(int x, int y) {
+        super(x, y, 0.5, 10); // fires every 2 seconds, deals 10 damage
+        this.range = 150;
+    }
+    
+    @Override
+    public void draw(Graphics2D g) {
+        g.setColor(Color.YELLOW);
+        g.fillRect(x - 10, y - 10, 20, 20);
+        g.setColor(new Color(150, 150, 0));
+        g.drawOval(x - range, y - range, range * 2, range * 2);
+    }
+}
+
+// Projectile class with predictive targeting
 class Projectile {
     private double x, y;
     private double targetX, targetY;
+    private Enemy target;
     private int damage;
-    private double speed = 5;
-    private boolean dead = false;
-
-    public Projectile(double x, double y, double targetX, double targetY, int damage) {
+    private double speed = 300.0; // pixels per second
+    private boolean hit = false;
+    
+    public Projectile(int x, int y, int targetX, int targetY, Enemy target, int damage) {
         this.x = x;
         this.y = y;
-        // Store the target position at the time of firing (not following)
         this.targetX = targetX;
         this.targetY = targetY;
+        this.target = target;
         this.damage = damage;
     }
-
-    public void update(List<Enemy> enemies) {
-        double distance = Math.sqrt((targetX - x) * (targetX - x) + (targetY - y) * (targetY - y));
-
-        if (distance < 15) {
-            // Check if projectile is close enough to hit an enemy
-            for (Enemy enemy : enemies) {
-                double distToEnemy = Math.sqrt((enemy.getX() - x) * (enemy.getX() - x) + (enemy.getY() - y) * (enemy.getY() - y));
-                if (distToEnemy < 15) {
-                    enemy.takeDamage(damage);
-                    dead = true;
-                    return;
+    
+    public void update() {
+        if (!hit && target != null && !target.isDead()) {
+            // Move towards predicted position
+            double dx = targetX - x;
+            double dy = targetY - y;
+            double distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > 5) {
+                double moveDistance = (speed / 60.0); // assuming 60 FPS
+                x += (dx / distance) * moveDistance;
+                y += (dy / distance) * moveDistance;
+                
+                // Check if projectile reached target
+                if (distance < moveDistance) {
+                    target.takeDamage(damage);
+                    hit = true;
                 }
+            } else {
+                target.takeDamage(damage);
+                hit = true;
             }
-            dead = true;
-        } else if (distance > 0) {
-            // Fire in a straight line to the fixed target position
-            x += (targetX - x) / distance * speed;
-            y += (targetY - y) / distance * speed;
         }
     }
-
-    public void render(GraphicsContext gc) {
-        gc.setFill(Color.YELLOW);
-        gc.fillOval(x - 5, y - 5, 10, 10);
+    
+    public boolean hasHitTarget() {
+        return hit;
     }
+    
+    public boolean isOffScreen() {
+        return x < 0 || x > 1200 || y < 0 || y > 700;
+    }
+    
+    public void draw(Graphics2D g) {
+        g.setColor(Color.YELLOW);
+        g.fillOval((int)x - 3, (int)y - 3, 6, 6);
+    }
+}
 
-    public boolean isDead() { return dead; }
+// Vector2D helper class
+class Vector2D {
+    public double x, y;
+    
+    public Vector2D(double x, double y) {
+        this.x = x;
+        this.y = y;
+    }
 }
