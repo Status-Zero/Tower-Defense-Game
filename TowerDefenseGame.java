@@ -123,6 +123,9 @@ public class TowerDefenseGame extends Application {
         // Draw grid
         drawGrid(gc);
 
+        // Draw path
+        drawPath(gc);
+
         // Draw towers
         for (Tower tower : gameState.getTowers()) {
             tower.render(gc, TILE_SIZE);
@@ -155,6 +158,24 @@ public class TowerDefenseGame extends Application {
 
         for (int i = 0; i <= rows; i++) {
             gc.strokeLine(0, i * TILE_SIZE, gameCanvas.getWidth(), i * TILE_SIZE);
+        }
+    }
+
+    private void drawPath(GraphicsContext gc) {
+        Point2D[] path = Enemy.getPath();
+        
+        // Draw path with enhanced visibility
+        gc.setStroke(Color.web("#FFD700"));
+        gc.setLineWidth(8);
+        
+        for (int i = 0; i < path.length - 1; i++) {
+            gc.strokeLine(path[i].getX(), path[i].getY(), path[i + 1].getX(), path[i + 1].getY());
+        }
+        
+        // Draw waypoint markers
+        gc.setFill(Color.web("#FFA500"));
+        for (Point2D waypoint : path) {
+            gc.fillOval(waypoint.getX() - 5, waypoint.getY() - 5, 10, 10);
         }
     }
 
@@ -287,9 +308,9 @@ class GameState {
 
 // Tower Type Enum
 enum TowerType {
-    BASIC(100, 40, 1.0, 5),
-    RAPID(150, 30, 1.5, 3),
-    SNIPER(200, 80, 0.5, 8);
+    BASIC(100, 100, 1.0, 5),
+    RAPID(150, 120, 1.5, 3),
+    SNIPER(200, 200, 0.5, 8);
 
     private final int cost;
     private final int range;
@@ -329,7 +350,8 @@ class Tower {
         if (currentTime - lastShotTime > fireInterval) {
             Enemy target = findTarget(enemies);
             if (target != null) {
-                projectiles.add(new Projectile(x, y, target, type.getDamage()));
+                // Fire projectile to the target's current position
+                projectiles.add(new Projectile(x, y, target.getX(), target.getY(), type.getDamage()));
                 lastShotTime = currentTime;
             }
         }
@@ -388,6 +410,10 @@ class Enemy {
         this.health = maxHealth;
     }
 
+    public static Point2D[] getPath() {
+        return PATH;
+    }
+
     public void update() {
         progress += SPEED / 500.0; // Normalized progress
         if (progress < 1.0) {
@@ -432,32 +458,36 @@ class Enemy {
 // Projectile Class
 class Projectile {
     private double x, y;
-    private Enemy target;
+    private double targetX, targetY;
     private int damage;
     private double speed = 5;
     private boolean dead = false;
 
-    public Projectile(double x, double y, Enemy target, int damage) {
+    public Projectile(double x, double y, double targetX, double targetY, int damage) {
         this.x = x;
         this.y = y;
-        this.target = target;
+        // Store the target position at the time of firing (not following)
+        this.targetX = targetX;
+        this.targetY = targetY;
         this.damage = damage;
     }
 
     public void update(List<Enemy> enemies) {
-        if (target == null || target.isDead() || target.getProgress() >= 1.0) {
-            dead = true;
-            return;
-        }
-
-        double targetX = target.getX();
-        double targetY = target.getY();
         double distance = Math.sqrt((targetX - x) * (targetX - x) + (targetY - y) * (targetY - y));
 
         if (distance < 15) {
-            target.takeDamage(damage);
+            // Check if projectile is close enough to hit an enemy
+            for (Enemy enemy : enemies) {
+                double distToEnemy = Math.sqrt((enemy.getX() - x) * (enemy.getX() - x) + (enemy.getY() - y) * (enemy.getY() - y));
+                if (distToEnemy < 15) {
+                    enemy.takeDamage(damage);
+                    dead = true;
+                    return;
+                }
+            }
             dead = true;
         } else if (distance > 0) {
+            // Fire in a straight line to the fixed target position
             x += (targetX - x) / distance * speed;
             y += (targetY - y) / distance * speed;
         }
